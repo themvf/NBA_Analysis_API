@@ -2,7 +2,7 @@ databases:
   - name: nba-analytics-db
     databaseName: nba_analytics
     user: nba_analytics
-    plan: starter
+    plan: basic-256mb
 
 services:
   - type: web
