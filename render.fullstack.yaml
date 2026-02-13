@@ -1,0 +1,70 @@
+databases:
+  - name: nba-analytics-db
+    databaseName: nba_analytics
+    user: nba_analytics
+    plan: starter
+
+services:
+  - type: web
+    name: nba-daily-source-api
+    runtime: python
+    repo: https://github.com/themvf/NBA_Daily
+    branch: main
+    plan: starter
+    autoDeploy: true
+    buildCommand: "pip install fastapi uvicorn"
+    startCommand: "python api_server.py --host 0.0.0.0 --port $PORT --db $SOURCE_API_DB_PATH"
+    envVars:
+      - key: SOURCE_API_DB_PATH
+        value: /var/data/nba_stats.db
+    disks:
+      - name: nba-daily-data
+        mountPath: /var/data
+        sizeGB: 1
+
+  - type: web
+    name: nba-analytics-dashboard
+    runtime: python
+    plan: starter
+    autoDeploy: true
+    buildCommand: "pip install -r requirements.txt && pip install -e ."
+    startCommand: "python -m nba_analytics.ingestion --init-only && streamlit run dashboard/app.py --server.port $PORT --server.address 0.0.0.0"
+    envVars:
+      - key: PYTHONPATH
+        value: src
+      - key: SOURCE_API_BASE_URL
+        fromService:
+          type: web
+          name: nba-daily-source-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nba-analytics-db
+          property: connectionString
+      - key: INGESTION_DEFAULT_LOOKBACK_DAYS
+        value: 45
+      - key: INGESTION_MAX_PAGE_SIZE
+        value: 1000
+
+  - type: cron
+    name: nba-analytics-ingestion
+    runtime: python
+    schedule: "0 10 * * *"
+    buildCommand: "pip install -r requirements.txt && pip install -e ."
+    startCommand: "python -m nba_analytics.ingestion"
+    envVars:
+      - key: PYTHONPATH
+        value: src
+      - key: SOURCE_API_BASE_URL
+        fromService:
+          type: web
+          name: nba-daily-source-api
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: DATABASE_URL
+        fromDatabase:
+          name: nba-analytics-db
+          property: connectionString
+      - key: INGESTION_DEFAULT_LOOKBACK_DAYS
+        value: 45
+      - key: INGESTION_MAX_PAGE_SIZE
+        value: 1000

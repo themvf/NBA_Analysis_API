@@ -1,0 +1,61 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nba-analytics-postgres
+    environment:
+      POSTGRES_USER: nba_analytics
+      POSTGRES_PASSWORD: nba_analytics
+      POSTGRES_DB: nba_analytics
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nba_analytics -d nba_analytics"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nba-analytics-dashboard
+    command: ["dashboard"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SOURCE_API_BASE_URL: ${SOURCE_API_BASE_URL:-http://host.docker.internal:8000}
+      SOURCE_API_TIMEOUT_SECONDS: ${SOURCE_API_TIMEOUT_SECONDS:-20}
+      SOURCE_API_PAGE_SIZE: ${SOURCE_API_PAGE_SIZE:-500}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nba_analytics:nba_analytics@postgres:5432/nba_analytics}
+      INGESTION_DEFAULT_LOOKBACK_DAYS: ${INGESTION_DEFAULT_LOOKBACK_DAYS:-45}
+      INGESTION_MAX_PAGE_SIZE: ${INGESTION_MAX_PAGE_SIZE:-1000}
+    ports:
+      - "8501:8501"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  ingest:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nba-analytics-ingest
+    command: ["ingest"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SOURCE_API_BASE_URL: ${SOURCE_API_BASE_URL:-http://host.docker.internal:8000}
+      SOURCE_API_TIMEOUT_SECONDS: ${SOURCE_API_TIMEOUT_SECONDS:-20}
+      SOURCE_API_PAGE_SIZE: ${SOURCE_API_PAGE_SIZE:-500}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://nba_analytics:nba_analytics@postgres:5432/nba_analytics}
+      INGESTION_DEFAULT_LOOKBACK_DAYS: ${INGESTION_DEFAULT_LOOKBACK_DAYS:-45}
+      INGESTION_MAX_PAGE_SIZE: ${INGESTION_MAX_PAGE_SIZE:-1000}
+    profiles: ["jobs"]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  pg_data:
